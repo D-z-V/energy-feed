@@ -175,7 +175,7 @@ function TwitterFeed() {
   const loadMore = () => {
     setLoadingMore(true);
     async function fetchData() {
-      const response = await fetch("http://localhost:5000/api");
+      const response = await fetch("http://localhost:5000/api/load_more");
       const data = await response.json();
       setTweets([...tweets, ...data.sort((a, b) => new Date(b.date) - new Date(a.date))]);
       setLoadingMore(false);
@@ -401,7 +401,7 @@ function TwitterFeed() {
                     display={"flex"}
                     justifyContent={"center"}
                     alignItems={"center"}>
-                    <CircularProgress size="7rem" />
+                    <CircularProgress size="5rem" />
                   </Box>
                 ) : (
                   <Typography variant="body1">{modalContent}</Typography>

@@ -2,7 +2,7 @@ from flask import Flask, jsonify
 from scraper import scrape
 from flask_cors import CORS, cross_origin
 from flask_socketio import SocketIO, emit
-from parallel import fetch, summarizer
+from parallel import fetch, summarizer, load_more
 from grammar import fix_text
 
 app = Flask(__name__)
@@ -14,6 +14,10 @@ def api():
     data = fetch()
     return jsonify(data)
     
+@app.route('/api/load_more')
+def load_more_api():
+    data = load_more()
+    return jsonify(data)
     
 @socketio.on('summarize_content')
 def handle_summarize_content(data):

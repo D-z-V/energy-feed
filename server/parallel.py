@@ -11,8 +11,9 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed, ProcessPoolExecutor
 from requests_futures.sessions import FuturesSession
 
-link_q, gpu_q, gpu_event, month_dict, short_month_dict, device, current_page = None, None, None, None, None, None, None
 req = 0
+
+link_q, gpu_q, gpu_event, month_dict, short_month_dict, device, current_page = None, None, None, None, None, None, None
 
 from transformers import BartTokenizer,BartForConditionalGeneration
 model=BartForConditionalGeneration.from_pretrained('Yale-LILY/brio-cnndm-uncased')
@@ -512,18 +513,26 @@ def fetch_urls():
     return gpu_q
 
 
+def clear():
+    global gpu_q
+    global link_q
+    global current_page
+    gpu_q = []
+    link_q = [[], [], [], [], []]
+    current_page = [0, 1, 1, 1, 1]
+
 
 def fetch():
     global req
-    if (req == 0):
-        data = main()
-        print(req)
-        req += 1
-        return data
-    else:
-        data = fetch_urls()
-        new_data = data[req*20:(req+1)*20]
-        print(req)
-        req += 1
-        return new_data
+    req += 1
+    clear()
+    data = main()
+    return data
+
+def load_more():
+    global req
+    data = fetch_urls()
+    new_data = data[req*20:(req+1)*20]
+    req += 1
+    return new_data
     
