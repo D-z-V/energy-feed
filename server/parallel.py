@@ -10,6 +10,8 @@ from bs4 import BeautifulSoup
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed, ProcessPoolExecutor
 from requests_futures.sessions import FuturesSession
+from newspaper import Article
+import concurrent.futures
 
 req = 0
 
@@ -28,7 +30,7 @@ def initialization():
     global link_q, gpu_q, gpu_event, month_dict, short_month_dict, device, current_page
 
     current_page = [0, 1, 1, 1, 1]
-    link_q = [[] for _ in range(5)]
+    link_q = [[] for _ in range(6)]
     gpu_q = []
     gpu_event = threading.Event()
 
@@ -133,6 +135,85 @@ def scrape_mi():
     for i in results_mi:
         link = i.find("a")["href"]
         link_q[4].append(link)
+
+google_xml = []
+
+def scrape_google():
+    try:
+        google_news = requests.get("https://news.google.com/rss/search?q=energy%20carbon+&hl=en-US&gl=US&ceid=US%3Aen")
+        soup = BeautifulSoup(google_news.content, "html.parser")
+        for i in soup.find_all("item"):
+            link_q[5].append(i.find('description').get_text().split('href="')[1].split('"')[0])
+            xml_data = {
+                "title": i.find('title').get_text(),
+                "link": i.find('description').get_text().split('href="')[1].split('"')[0],
+                "date": i.find('pubdate').get_text(),
+                "source": i.get_text().split('</font>')[1] + " via (Google News)"
+            }
+            google_xml.append(xml_data)
+    except:
+        pass
+
+def fetch_google(n_articles=3):
+    scrape_google()
+    def convert_date(date):
+        date = date.split(" ")
+        day = date[1]
+        month = date[2]
+        year = date[3]
+        month = short_month_dict[month]
+        return year + "-" + month + "-" + day
+
+    def download_article(url):
+        try:
+            article = Article(url)
+            article.download()
+            article.parse()
+            return article
+        except:
+            pass
+
+    try:
+        scrape_google()
+        if len(link_q[5]) < n_articles:
+            return []
+
+
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            futures = [executor.submit(download_article, url) for url in link_q[5][:n_articles]]
+
+        link_q[5] = link_q[5][n_articles:]
+
+        results = []
+
+        for future in as_completed(futures):
+            try:
+                index = futures.index(future)
+                article = future.result()
+                title = article.title
+                date = convert_date(google_xml[index]['date'])
+                text = article.text
+                source = google_xml[index]['source']
+                image = article.top_image
+                url = google_xml[index]['link']
+                if text == None:
+                    continue
+                results.append({
+                    "title": title,
+                    "date": date,
+                    "content": text,
+                    "source": source,
+                    "image": image,
+                    "id": uuid.uuid1(),
+                    "url": url
+                })
+            except:
+                continue
+
+        return results
+    
+    except:
+        return []
 
 
 def fetch_mit(n_articles=3):
@@ -480,11 +561,12 @@ def main():
     initialization()
     futures = []
     with ThreadPoolExecutor() as executor:
-        futures.append(executor.submit(fetch_mit, 4))
-        futures.append(executor.submit(fetch_iea, 4))
-        futures.append(executor.submit(fetch_en, 4))
-        futures.append(executor.submit(fetch_rn, 4))
-        futures.append(executor.submit(fetch_mi, 4))
+        futures.append(executor.submit(fetch_mit, 2))
+        futures.append(executor.submit(fetch_iea, 2))
+        futures.append(executor.submit(fetch_en, 2))
+        futures.append(executor.submit(fetch_rn, 2))
+        futures.append(executor.submit(fetch_mi, 2))
+        futures.append(executor.submit(fetch_google, 10))
 
     for future in as_completed(futures):
         gpu_q.extend(future.result())
@@ -497,11 +579,12 @@ def main():
 def fetch_urls():
     futures = []
     with ThreadPoolExecutor() as executor:
-        futures.append(executor.submit(fetch_mit, 4))
-        futures.append(executor.submit(fetch_iea, 4))
-        futures.append(executor.submit(fetch_en, 4))
-        futures.append(executor.submit(fetch_rn, 4))
-        futures.append(executor.submit(fetch_mi, 4))
+        futures.append(executor.submit(fetch_mit, 2))
+        futures.append(executor.submit(fetch_iea, 2))
+        futures.append(executor.submit(fetch_en, 2))
+        futures.append(executor.submit(fetch_rn, 2))
+        futures.append(executor.submit(fetch_mi, 2))
+        futures.append(executor.submit(fetch_google, 10))
 
     for future in as_completed(futures):
         gpu_q.extend(future.result())
@@ -517,6 +600,8 @@ def clear():
     global gpu_q
     global link_q
     global current_page
+    global req
+    req = 0
     gpu_q = []
     link_q = [[], [], [], [], []]
     current_page = [0, 1, 1, 1, 1]
@@ -524,8 +609,8 @@ def clear():
 
 def fetch():
     global req
-    req += 1
     clear()
+    req += 1
     data = main()
     return data
 
