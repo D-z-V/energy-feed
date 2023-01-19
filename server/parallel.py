@@ -18,8 +18,8 @@ req = 0
 link_q, gpu_q, gpu_event, month_dict, short_month_dict, device, current_page = None, None, None, None, None, None, None
 
 from transformers import BartTokenizer,BartForConditionalGeneration
-model=BartForConditionalGeneration.from_pretrained('Yale-LILY/brio-cnndm-uncased')
-tokenizer=BartTokenizer.from_pretrained('Yale-LILY/brio-cnndm-uncased')
+model=BartForConditionalGeneration.from_pretrained('Yale-LILY/brio-cnndm-cased')
+tokenizer=BartTokenizer.from_pretrained('Yale-LILY/brio-cnndm-cased')
 summarizer=pipeline("summarization",model=model,tokenizer=tokenizer,batch_size=16,truncation=True,device=0)
 
 

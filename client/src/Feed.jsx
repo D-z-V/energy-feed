@@ -19,8 +19,7 @@ import FormGroup from "@mui/material/FormGroup";
 import FormControlLabel from "@mui/material/FormControlLabel";
 import { ThemeProvider, createTheme } from "@mui/material/styles";
 import CssBaseline from "@mui/material/CssBaseline";
-import AutorenewIcon from '@mui/icons-material/Autorenew';
-
+import AutorenewIcon from "@mui/icons-material/Autorenew";
 
 const MaterialUISwitch = styled(Switch)(({ theme }) => ({
   width: 62,
@@ -117,12 +116,18 @@ function TwitterFeed() {
   const [tweets, setTweets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [cardLoading, setCardLoading] = useState(null);
+  const [queryLoading, setQueryLoading] = useState(false);
+
   const [modalOpen, setModalOpen] = useState(false);
   const [modalContent, setModalContent] = useState(null);
   const [modalTitle, setModalTitle] = useState(null);
   const [modalImage, setModalImage] = useState(null);
   const [modalId, setModalId] = useState(null);
+  const [modalDate, setModalDate] = useState(null);
   const [modalLoading, setModalLoading] = useState(false);
+  const [modalSource, setModalSource] = useState(null);
+  const [modalUrl, setModalUrl] = useState(null);
+
   const [loadingMore, setLoadingMore] = useState(false);
   const [searchValue, setSearchValue] = useState("");
   const [pageTheme, setPageTheme] = useState("light");
@@ -162,6 +167,19 @@ function TwitterFeed() {
     });
   }, [tweets]);
 
+  const querySearch = (query) => {
+    socket.emit("query_search", query);
+    setQueryLoading(true);
+  };
+
+  useEffect(() => {
+    socket.on("query_results", (data) => {
+      setQueryLoading(false);
+      console.log(data.results);
+      setTweets([...tweets, ...data.results]);
+    });
+  }, [tweets]);
+
   useEffect(() => {
     async function fetchData() {
       const response = await fetch("http://localhost:5000/api");
@@ -177,7 +195,10 @@ function TwitterFeed() {
     async function fetchData() {
       const response = await fetch("http://localhost:5000/api/load_more");
       const data = await response.json();
-      setTweets([...tweets, ...data.sort((a, b) => new Date(b.date) - new Date(a.date))]);
+      setTweets([
+        ...tweets,
+        ...data.sort((a, b) => new Date(b.date) - new Date(a.date)),
+      ]);
       setLoadingMore(false);
     }
     fetchData();
@@ -197,56 +218,60 @@ function TwitterFeed() {
   return (
     <>
       <ThemeProvider theme={theme}>
-      <CssBaseline />
-      <Box sx={{ flexGrow: 1 }}>
-        <AppBar position="fixed">
-          <Toolbar>
-            <Typography
-              variant="h6"
-              noWrap
-              component="div"
-              sx={{ flexGrow: 1, display: { xs: "none", sm: "block" } }}>
-              Energy Feed
-            </Typography>
-            <Search>
-              <SearchIconWrapper>
-                <SearchIcon />
-              </SearchIconWrapper>
-              <StyledInputBase
-                placeholder="Search…"
-                inputProps={{ "aria-label": "search" }}
-                onChange={(e) => setSearchValue(e.target.value)}
-              />
-            </Search>
-            <FormGroup>
-              <FormControlLabel
-                control={
-                  <MaterialUISwitch
-                    sx={{ m: 1, ml: 5 }}
-                    defaultChecked={isChecked}
-                    onClick={() => {
-                      setIsChecked(!isChecked);
-                      pageTheme === "light"
-                        ? setPageTheme("dark")
-                        : setPageTheme("light");
-                    }}
-                  />
-                }
-              />
-            </FormGroup>
-          </Toolbar>
-        </AppBar>
-      </Box>
+        <CssBaseline />
+        <Box sx={{ flexGrow: 1 }}>
+          <AppBar position="fixed">
+            <Toolbar>
+              <Typography
+                variant="h6"
+                noWrap
+                component="div"
+                sx={{ flexGrow: 1, display: { xs: "none", sm: "block" } }}>
+                Energy Feed
+              </Typography>
+              <Search>
+                <SearchIconWrapper>
+                  <SearchIcon />
+                </SearchIconWrapper>
+                <StyledInputBase
+                  placeholder="Search…"
+                  inputProps={{ "aria-label": "search" }}
+                  onChange={(e) => setSearchValue(e.target.value)}
+                />
+              </Search>
+              <FormGroup>
+                <FormControlLabel
+                  control={
+                    <MaterialUISwitch
+                      sx={{ m: 1, ml: 5 }}
+                      defaultChecked={isChecked}
+                      onClick={() => {
+                        setIsChecked(!isChecked);
+                        pageTheme === "light"
+                          ? setPageTheme("dark")
+                          : setPageTheme("light");
+                      }}
+                    />
+                  }
+                />
+              </FormGroup>
+            </Toolbar>
+          </AppBar>
+        </Box>
       </ThemeProvider>
 
       <ThemeProvider theme={theme}>
         <CssBaseline />
         <Grid container spacing={5} p={5} mt={3}>
+          {console.log(tweets)}
           {tweets
             .filter(
               (tweet) =>
                 searchValue === "" ||
                 tweet.content
+                  .toLowerCase()
+                  .includes(searchValue.toLowerCase()) ||
+                tweet.source
                   .toLowerCase()
                   .includes(searchValue.toLowerCase()) ||
                 tweet.title.toLowerCase().includes(searchValue.toLowerCase())
@@ -303,7 +328,10 @@ function TwitterFeed() {
                             setModalContent(tweet.content);
                             setModalTitle(tweet.title);
                             setModalImage(tweet.image);
+                            setModalDate(tweet.date);
                             setModalId(tweet.id);
+                            setModalSource(tweet.source);
+                            setModalUrl(tweet.url);
                           }}
                           style={{ height: "17px" }}>
                           View More
@@ -321,64 +349,152 @@ function TwitterFeed() {
               </Grid>
             ))}
 
-          {tweets.filter(
-            (tweet) =>
-              searchValue === "" ||
-              tweet.content.toLowerCase().includes(searchValue.toLowerCase()) ||
-              tweet.title.toLowerCase().includes(searchValue.toLowerCase())
-          ).length > 0 ? (
-            <Box
-              display="flex"
-              justifyContent="center"
-              alignItems="center"
-              my={5}
-              width="100%">
+          {searchValue !== "" ? (
+            tweets.filter(
+              (tweet) =>
+                tweet.content
+                  .toLowerCase()
+                  .includes(searchValue.toLowerCase()) ||
+                tweet.source
+                  .toLowerCase()
+                  .includes(searchValue.toLowerCase()) ||
+                tweet.title.toLowerCase().includes(searchValue.toLowerCase())
+            ).length > 0 ? (
+              <Box
+                display="flex"
+                justifyContent="center"
+                alignItems="center"
+                flexDirection="column"
+                my={10}
+                width="100%">
+                {!queryLoading && (
+                  <Box
+                    display="flex"
+                    justifyContent="center"
+                    alignItems="center"
+                    flexDirection="column">
+                    <Typography variant="h4" color="textSecondary" gutterBottom>
+                      End of Search Results
+                    </Typography>
+                    <Typography variant="h6" color="textSecondary" gutterBottom>
+                      Click on the button to query more from Google News
+                    </Typography>
+                    <Typography>
+                      <Button
+                        onClick={() => querySearch(searchValue)}
+                        variant="contained"
+                        sx={{ mt: 2, mb: 2 }}
+                        endIcon={<SearchIcon style = {{ fontSize: 30 }} />}
+                        >
+                        <Typography variant="h6" p={1}>
+                          Search Query
+                        </Typography>
+                      </Button>
+                    </Typography>
+                  </Box>
+                )}
+                {queryLoading && (
+                  <Box
+                    width={"100%"}
+                    my={8}
+                    display={"flex"}
+                    justifyContent={"center"}
+                    alignItems={"center"}>
+                    <CircularProgress size="6rem" />
+                  </Box>
+                )}
+              </Box>
+            ) : (
+              <Box
+                display="flex"
+                justifyContent="center"
+                alignItems="center"
+                flexDirection="column"
+                my={30}
+                width="100%">
+                {!queryLoading && (
+                  <>
+                    <Typography variant="h4" color="textSecondary" gutterBottom>
+                      No Feeds Found
+                    </Typography>
+                    <Typography variant="h6" color="textSecondary" gutterBottom>
+                      Click on the button to query Google News
+                    </Typography>
+                    <Typography>
+                      <Button
+                        onClick={() => querySearch(searchValue)}
+                        variant="contained"
+                        sx={{ mt: 2, mb: 2 }}
+                        endIcon={<SearchIcon style = {{ fontSize: 30 }} />}
+                        >
+                        <Typography variant="h6" p={1}>
+                          Search Query
+                        </Typography>
+                      </Button>
+                    </Typography>
+                  </>
+                )}
+                {queryLoading && (
+                  <Box
+                    width={"100%"}
+                    my={8}
+                    display={"flex"}
+                    justifyContent={"center"}
+                    alignItems={"center"}>
+                    <CircularProgress size="6rem" />
+                  </Box>
+                )}
+              </Box>
+            )
+          ) : (
+            <>
+              {!loadingMore && (
+                <Box
+                  display="flex"
+                  justifyContent="center"
+                  alignItems="center"
+                  flexDirection="column"
+                  my={10}
+                  width="100%">
+                  <Button
+                    onClick={() => loadMore()}
+                    variant="contained"
+                    sx={{ mt: 2, mb: 2 }}
+                    endIcon={<AutorenewIcon style={{ fontSize: "40px" }} />}
+                    >
+                    <Typography variant="h6" p={1}>
+                      Load More
+                    </Typography>
+                  </Button>
+                </Box>
+              )}
               {loadingMore && (
                 <Box
                   width={"100%"}
-                  my={8}
+                  my={10}
                   display={"flex"}
                   justifyContent={"center"}
                   alignItems={"center"}>
-                  <CircularProgress size="4rem" />
+                  <CircularProgress size="5rem" />
                 </Box>
               )}
-              {!loadingMore && (
-                <Button
-                  style={{minWidth: '150px', minHeight: '70px'}}
-                  variant="contained"
-                  endIcon={<AutorenewIcon style={{ fontSize: "3rem" }} />}
-                  onClick={loadMore}>
-                    <Typography variant="h6">
-                    Load More
-                    </Typography>
-                </Button>
-              )}
-            </Box>
-          ) : (
-            <Box
-              display="flex"
-              justifyContent="center"
-              alignItems="center"
-              my={5}
-              width="100%">
-              <Typography variant="h6" color="textSecondary">
-                No Feeds Found
-              </Typography>
-            </Box>
+            </>
           )}
-
           <Dialog
             open={modalOpen}
             onClose={() => setModalOpen(false)}
             maxWidth="md">
             <DialogTitle>{modalTitle}</DialogTitle>
+            <DialogContent>
+              <Typography variant="body2" color="textSecondary" mb={1}>
+                {formatDate(modalDate)}
+              </Typography>
+            </DialogContent>
             <Box display="flex" justifyContent="center" my={1}>
               <img
                 src={modalImage}
                 alt={"modalImage"}
-                height="350px"
-                width="700px"
+                style={{ maxHeight: "300px" }}
               />
             </Box>
             <Box display="flex" justifyContent="center" my={1}>
@@ -401,7 +517,8 @@ function TwitterFeed() {
                     my={6}
                     display={"flex"}
                     justifyContent={"center"}
-                    alignItems={"center"}>
+                    alignItems={"center"}
+                    sx={{ px: 50 }}>
                     <CircularProgress size="5rem" />
                   </Box>
                 ) : (
@@ -409,7 +526,14 @@ function TwitterFeed() {
                 )}
               </DialogContentText>
             </DialogContent>
-            <DialogActions>
+            <DialogActions
+              sx={{ display: "flex", justifyContent: "space-between" }}>
+              <Box>
+                Source :{" "}
+                <Link href={modalUrl} target="_blank">
+                  {modalSource}{" "}
+                </Link>
+              </Box>
               <Button onClick={() => setModalOpen(false)} color="primary">
                 Close
               </Button>
