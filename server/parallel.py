@@ -622,3 +622,11 @@ def query_search(query):
 
 
 fetch_google(5)
+
+def load_more():
+    global req
+    data = fetch_urls()
+    new_data = data[req*20:(req+1)*20]
+    req += 1
+    return new_data
+ 
