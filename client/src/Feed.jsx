@@ -133,6 +133,9 @@ function TwitterFeed() {
   const [pageTheme, setPageTheme] = useState("light");
   const [isChecked, setIsChecked] = useState(false);
 
+  const [isSummarized, setIsSummarized] = useState({});
+  const [originalContent, setOriginalContent] = useState({});
+
   var theme = createTheme({
     palette: {
       mode: pageTheme,
@@ -146,9 +149,23 @@ function TwitterFeed() {
   }
 
   const summarizeContent = (id, content) => {
+    setOriginalContent({ ...originalContent, [id]: content });
     socket.emit("summarize_content", { id, content });
+    setIsSummarized({ ...isSummarized, [id]: true });
     setCardLoading(id);
     setModalLoading(true);
+  };
+
+  const handleShowOriginal = (id) => {
+    setIsSummarized({ ...isSummarized, [id]: false });
+    setModalContent(originalContent[id]);
+    const updatedTweets = tweets.map((tweet) => {
+      if (tweet.id === id) {
+        return { ...tweet, content: originalContent[id] };
+      }
+      return tweet;
+    });
+    setTweets(updatedTweets);
   };
 
   useEffect(() => {
@@ -291,18 +308,37 @@ function TwitterFeed() {
                         />
                       </Box>
                       <Box display="flex" justifyContent="flex-end" my={1}>
-                        <Button
-                          variant="contained"
-                          endIcon={<SummarizeIcon />}
-                          onClick={() =>
-                            summarizeContent(tweet.id, tweet.content)
-                          }
-                          style={{
-                            marginLeft: "100px",
-                            display: cardLoading === tweet.id ? "none" : "flex",
-                          }}>
-                          Summarize
-                        </Button>
+                        {isSummarized[tweet.id] ? (
+                          <Button
+                            variant="contained"
+                            endIcon={<SummarizeIcon />}
+                            onClick={() =>
+                              handleShowOriginal(tweet.id, tweet.content)
+                            }
+                            style={{
+                              marginLeft: "100px",
+                              display:
+                                cardLoading === tweet.id ? "none" : "flex",
+                            }}
+                            color="success"
+                            >
+                            Show Original
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="contained"
+                            endIcon={<SummarizeIcon />}
+                            onClick={() =>
+                              summarizeContent(tweet.id, tweet.content)
+                            }
+                            style={{
+                              marginLeft: "100px",
+                              display:
+                                cardLoading === tweet.id ? "none" : "flex",
+                            }}>
+                            Summarize
+                          </Button>
+                        )}
                       </Box>
                     </Box>
                     <Typography variant="body2" color="textSecondary" my={1}>
@@ -384,8 +420,7 @@ function TwitterFeed() {
                         onClick={() => querySearch(searchValue)}
                         variant="contained"
                         sx={{ mt: 2, mb: 2 }}
-                        endIcon={<SearchIcon style = {{ fontSize: 30 }} />}
-                        >
+                        endIcon={<SearchIcon style={{ fontSize: 30 }} />}>
                         <Typography variant="h6" p={1}>
                           Search Query
                         </Typography>
@@ -425,8 +460,7 @@ function TwitterFeed() {
                         onClick={() => querySearch(searchValue)}
                         variant="contained"
                         sx={{ mt: 2, mb: 2 }}
-                        endIcon={<SearchIcon style = {{ fontSize: 30 }} />}
-                        >
+                        endIcon={<SearchIcon style={{ fontSize: 30 }} />}>
                         <Typography variant="h6" p={1}>
                           Search Query
                         </Typography>
@@ -460,8 +494,7 @@ function TwitterFeed() {
                     onClick={() => loadMore()}
                     variant="contained"
                     sx={{ mt: 2, mb: 2 }}
-                    endIcon={<AutorenewIcon style={{ fontSize: "40px" }} />}
-                    >
+                    endIcon={<AutorenewIcon style={{ fontSize: "40px" }} />}>
                     <Typography variant="h6" p={1}>
                       Load More
                     </Typography>
@@ -498,15 +531,30 @@ function TwitterFeed() {
               />
             </Box>
             <Box display="flex" justifyContent="center" my={1}>
-              <Button
-                variant="contained"
-                endIcon={<SummarizeIcon />}
-                onClick={() => summarizeContent(modalId, modalContent)}
-                style={{
-                  display: cardLoading === modalId ? "none" : "flex",
-                }}>
-                Summarize
-              </Button>
+              {isSummarized[modalId] ? (
+                <Button
+                  variant="contained"
+                  endIcon={<SummarizeIcon />}
+                  onClick={() => handleShowOriginal(modalId, modalContent)}
+                  style={{
+                    display: cardLoading === modalId ? "none" : "flex",
+                  }}
+                  color="success"
+                  >
+                  Show Original
+                </Button>
+              ) : (
+                <Button
+                  variant="contained"
+                  endIcon={<SummarizeIcon />}
+                  onClick={() => summarizeContent(modalId, modalContent)}
+                  style={{
+                    display: cardLoading === modalId ? "none" : "flex",
+                  }}
+                  >
+                  Summarize
+                </Button>
+              )}
             </Box>
 
             <DialogContent>
@@ -518,7 +566,7 @@ function TwitterFeed() {
                     display={"flex"}
                     justifyContent={"center"}
                     alignItems={"center"}
-                    sx={{ px: 50 }}>
+                    sx={{ px: { md: 50 } }}>
                     <CircularProgress size="5rem" />
                   </Box>
                 ) : (
