@@ -140,7 +140,7 @@ google_xml = []
 
 def scrape_google():
     try:
-        google_news = requests.get("https://news.google.com/rss/search?q=energy%20carbon+&hl=en-US&gl=US&ceid=US%3Aen")
+        google_news = requests.get("https://news.google.com/rss/search?q=energy%20carbon%20when%3A2d&hl=en-US&gl=US&ceid=US%3Aen")
         soup = BeautifulSoup(google_news.content, "html.parser")
         for i in soup.find_all("item"):
             link_q[5].append(i.find('description').get_text().split('href="')[1].split('"')[0])
