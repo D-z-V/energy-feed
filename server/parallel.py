@@ -1,72 +1,70 @@
 from flask import Flask, jsonify
 import requests
 from bs4 import BeautifulSoup
+import lxml
 from datetime import datetime
-from transformers import pipeline
+import urllib.parse
 import gc
-import torch
-import threading
-from bs4 import BeautifulSoup
 import uuid
-from concurrent.futures import ThreadPoolExecutor, as_completed, ProcessPoolExecutor
+import concurrent.futures
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from requests_futures.sessions import FuturesSession
 from newspaper import Article
-import concurrent.futures
-
-req = 0
-
-link_q, gpu_q, gpu_event, month_dict, short_month_dict, device, current_page = None, None, None, None, None, None, None
-
-from transformers import BartTokenizer,BartForConditionalGeneration
-model=BartForConditionalGeneration.from_pretrained('Yale-LILY/brio-cnndm-cased')
-tokenizer=BartTokenizer.from_pretrained('Yale-LILY/brio-cnndm-cased')
-summarizer=pipeline("summarization",model=model,tokenizer=tokenizer,batch_size=16,truncation=True,device=0)
 
 
-def initialization():
-    gc.collect()
-    torch.cuda.empty_cache()
+import torch
+from transformers import pipeline
+from transformers import BartTokenizer, BartForConditionalGeneration
 
-    global link_q, gpu_q, gpu_event, month_dict, short_month_dict, device, current_page
+gc.collect()
+torch.cuda.empty_cache()
+device = 0 if torch.cuda.is_available() else -1
+model = BartForConditionalGeneration.from_pretrained("Yale-LILY/brio-cnndm-cased")
+tokenizer = BartTokenizer.from_pretrained("Yale-LILY/brio-cnndm-cased")
+summarizer = pipeline(
+    "summarization",
+    model=model,
+    tokenizer=tokenizer,
+    truncation=True,
+    device=device,
+)
 
-    current_page = [0, 1, 1, 1, 1]
-    link_q = [[] for _ in range(6)]
-    gpu_q = []
-    gpu_event = threading.Event()
+current_query = None
+current_page = [0, 1, 1, 1, 1]
+link_q = [[] for _ in range(5)]
+gpu_q = []
+default_google_q = []
+current_google_q = []
 
-    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+month_dict = {
+    "January": "01",
+    "February": "02",
+    "March": "03",
+    "April": "04",
+    "May": "05",
+    "June": "06",
+    "July": "07",
+    "August": "08",
+    "September": "09",
+    "October": "10",
+    "November": "11",
+    "December": "12",
+}
 
-    month_dict = {
-        "January": "01",
-        "February": "02",
-        "March": "03",
-        "April": "04",
-        "May": "05",
-        "June": "06",
-        "July": "07",
-        "August": "08",
-        "September": "09",
-        "October": "10",
-        "November": "11",
-        "December": "12",
-    }
-
-    short_month_dict = {
-        "Jan": "01",
-        "Feb": "02",
-        "Mar": "03",
-        "Apr": "04",
-        "May": "05",
-        "Jun": "06",
-        "Jul": "07",
-        "Aug": "08",
-        "Sep": "09",
-        "Oct": "10",
-        "Nov": "11",
-        "Dec": "12",
-    }
-
-   
+short_month_dict = {
+    "Jan": "01",
+    "Feb": "02",
+    "Mar": "03",
+    "Apr": "04",
+    "May": "05",
+    "Jun": "06",
+    "Jul": "07",
+    "Aug": "08",
+    "Sep": "09",
+    "Oct": "10",
+    "Nov": "11",
+    "Dec": "12",
+}
 
 
 def scrape_mit():
@@ -136,26 +134,34 @@ def scrape_mi():
         link = i.find("a")["href"]
         link_q[4].append(link)
 
-google_xml = []
 
-def scrape_google():
+def scrape_google(query=None):
+    global default_google_q, current_google_q
     try:
-        google_news = requests.get("https://news.google.com/rss/search?q=energy%20carbon+&hl=en-US&gl=US&ceid=US%3Aen")
-        soup = BeautifulSoup(google_news.content, "html.parser")
-        for i in soup.find_all("item"):
-            link_q[5].append(i.find('description').get_text().split('href="')[1].split('"')[0])
-            xml_data = {
-                "title": i.find('title').get_text(),
-                "link": i.find('description').get_text().split('href="')[1].split('"')[0],
-                "date": i.find('pubdate').get_text(),
-                "source": i.get_text().split('</font>')[1] + " via (Google News)"
-            }
-            google_xml.append(xml_data)
-    except:
+        if query == None:
+            query = urllib.parse.quote("carbon energy")
+            google_news = requests.get(
+                f"https://news.google.com/rss/search?q={query}%20when%3A2d&hl=en-US&gl=US&ceid=US%3Aen"
+            )
+            byte_data = google_news.content
+            root = lxml.etree.fromstring(byte_data)
+            default_google_q = root.findall(".//item")
+        else:
+            query = urllib.parse.quote(query)
+            google_news = requests.get(
+                f"https://news.google.com/rss/search?q={query}%20when%3A2d&hl=en-US&gl=US&ceid=US%3Aen"
+            )
+            byte_data = google_news.content
+            root = lxml.etree.fromstring(byte_data)
+            current_google_q = root.findall(".//item")
+    except Exception as e:
+        print(e)
         pass
 
-def fetch_google(n_articles=3):
-    scrape_google()
+
+def fetch_google(n_articles=3, query=None):
+    global current_google_q, default_google_q, current_query
+
     def convert_date(date):
         date = date.split(" ")
         day = date[1]
@@ -174,15 +180,27 @@ def fetch_google(n_articles=3):
             pass
 
     try:
-        scrape_google()
-        if len(link_q[5]) < n_articles:
+        if query == None:
+            if not default_google_q:
+                scrape_google(query)
+            use_q = default_google_q
+        elif query == current_query:
+            if not current_google_q:
+                scrape_google(query)
+            use_q = current_google_q
+        else:
+            current_google_q = []
+            current_query = query
+            scrape_google(query)
+            use_q = current_google_q
+        if len(use_q) < n_articles:
             return []
 
-
         with concurrent.futures.ThreadPoolExecutor() as executor:
-            futures = [executor.submit(download_article, url) for url in link_q[5][:n_articles]]
-
-        link_q[5] = link_q[5][n_articles:]
+            futures = [
+                executor.submit(download_article, item.find("link").text)
+                for item in use_q[:n_articles]
+            ]
 
         results = []
 
@@ -191,28 +209,36 @@ def fetch_google(n_articles=3):
                 index = futures.index(future)
                 article = future.result()
                 title = article.title
-                date = convert_date(google_xml[index]['date'])
+                date = convert_date(use_q[index].find("pubDate").text)
                 text = article.text
-                source = google_xml[index]['source']
+                source = use_q[index].find("source").text
                 image = article.top_image
-                url = google_xml[index]['link']
+                url = article.url
                 if text == None:
                     continue
-                results.append({
-                    "title": title,
-                    "date": date,
-                    "content": text,
-                    "source": source,
-                    "image": image,
-                    "id": uuid.uuid1(),
-                    "url": url
-                })
+                results.append(
+                    {
+                        "title": title,
+                        "date": date,
+                        "content": text,
+                        "source": source,
+                        "image": image,
+                        "id": str(uuid.uuid1()),
+                        "url": url,
+                    }
+                )
             except:
                 continue
+        if query == None:
+            default_google_q = default_google_q[n_articles:]
+        else:
+            current_google_q = current_google_q[n_articles:]
 
+        print("Google done")
         return results
-    
-    except:
+
+    except Exception as e:
+        print(e)
         return []
 
 
@@ -260,7 +286,8 @@ def fetch_mit(n_articles=3):
                     .replace("\xa0", "")
                 )
                 image = (
-                    "https://climate.mit.edu" + article_soup.find(class_="image-style-post-image")["src"]
+                    "https://climate.mit.edu"
+                    + article_soup.find(class_="image-style-post-image")["src"]
                 )
                 results.append(
                     {
@@ -269,16 +296,18 @@ def fetch_mit(n_articles=3):
                         "date": date,
                         "source": "MIT",
                         "url": response.url,
-                        "id": uuid.uuid1(),
+                        "id": str(uuid.uuid1()),
                         "image": image,
                     }
                 )
             except:
                 pass
 
+        print("MIT done")
         return results
 
-    except:
+    except Exception as e:
+        print(e)
         return []
 
 
@@ -325,9 +354,7 @@ def fetch_iea(n_articles=3):
                     .replace("\n", " ")
                     .replace("\xa0", "")
                 )
-                image = (
-                    article_soup.find(class_='o-page__img').find('img')['data-src']
-                )
+                image = article_soup.find(class_="o-page__img").find("img")["data-src"]
                 results.append(
                     {
                         "title": title,
@@ -335,16 +362,18 @@ def fetch_iea(n_articles=3):
                         "date": date,
                         "source": "iea",
                         "url": response.url,
-                        "id": uuid.uuid1(),
+                        "id": str(uuid.uuid1()),
                         "image": image,
                     }
                 )
             except:
                 pass
 
+        print("IEA done")
         return results
 
-    except:
+    except Exception as e:
+        print(e)
         return []
 
 
@@ -396,9 +425,7 @@ def fetch_rn(n_articles=3):
                     .replace("\n", " ")
                     .replace("\xa0", "")
                 )
-                image = (
-                    article_soup.find("figure").find("img")['src']
-                )
+                image = article_soup.find("figure").find("img")["src"]
                 results.append(
                     {
                         "title": title,
@@ -406,15 +433,17 @@ def fetch_rn(n_articles=3):
                         "date": date,
                         "source": "RechargeNow",
                         "url": response.url,
-                        "id": uuid.uuid1(),
-                        "image": image
+                        "id": str(uuid.uuid1()),
+                        "image": image,
                     }
                 )
             except:
                 pass
 
+        print("RN done")
         return results
-    except:
+    except Exception as e:
+        print(e)
         return []
 
 
@@ -465,9 +494,9 @@ def fetch_en(n_articles=3):
                     .replace("\n", " ")
                     .replace("\xa0", "")
                 )
-                image = (
-                    article_soup.find(class_="js-poster-img c-article-media__img u-max-height-full u-position-absolute u-width-full u-z-index-1")["src"]
-                )   
+                image = article_soup.find(
+                    class_="js-poster-img c-article-media__img u-max-height-full u-position-absolute u-width-full u-z-index-1"
+                )["src"]
                 results.append(
                     {
                         "title": title,
@@ -475,15 +504,18 @@ def fetch_en(n_articles=3):
                         "date": date,
                         "source": "Euronews",
                         "url": response.url,
-                        "id": uuid.uuid1(),
-                        "image": image
+                        "id": str(uuid.uuid1()),
+                        "image": image,
                     }
                 )
             except:
                 pass
+
+        print("EN done")
         return results
 
-    except:
+    except Exception as e:
+        print(e)
         return []
 
 
@@ -534,9 +566,9 @@ def fetch_mi(n_articles=3):
                     .replace("\xa0", "")
                     .split("Listen to this article ")[1]
                 )
-                image = (
-                    article_soup.find(class_="attachment-full size-full wp-post-image")['src']
-                )
+                image = article_soup.find(
+                    class_="attachment-full size-full wp-post-image"
+                )["src"]
                 results.append(
                     {
                         "title": title,
@@ -544,36 +576,19 @@ def fetch_mi(n_articles=3):
                         "date": date,
                         "source": "Mercom India",
                         "url": response.url,
-                        "id": uuid.uuid1(),
-                        "image" : image
+                        "id": str(uuid.uuid1()),
+                        "image": image,
                     }
                 )
             except:
                 pass
 
+        print("MI done")
         return results
 
-    except:
+    except Exception as e:
+        print(e)
         return []
-
-
-def main():
-    initialization()
-    futures = []
-    with ThreadPoolExecutor() as executor:
-        futures.append(executor.submit(fetch_mit, 2))
-        futures.append(executor.submit(fetch_iea, 2))
-        futures.append(executor.submit(fetch_en, 2))
-        futures.append(executor.submit(fetch_rn, 2))
-        futures.append(executor.submit(fetch_mi, 2))
-        futures.append(executor.submit(fetch_google, 10))
-
-    for future in as_completed(futures):
-        gpu_q.extend(future.result())
-
-    #gpu_q.sort(key=lambda x: datetime.strptime(x['date'], '%Y-%m-%d'), reverse=True)
-
-    return gpu_q
 
 
 def fetch_urls():
@@ -589,35 +604,21 @@ def fetch_urls():
     for future in as_completed(futures):
         gpu_q.extend(future.result())
 
-
-    #gpu_q.sort(key=lambda x: datetime.strptime(x['date'], '%Y-%m-%d'), reverse=True)
-
+    # gpu_q.sort(key=lambda x: datetime.strptime(x['date'], '%Y-%m-%d'), reverse=True)
 
     return gpu_q
 
 
-def clear():
-    global gpu_q
-    global link_q
-    global current_page
-    global req
-    req = 0
-    gpu_q = []
-    link_q = [[], [], [], [], []]
-    current_page = [0, 1, 1, 1, 1]
-
-
 def fetch():
-    global req
-    clear()
-    req += 1
-    data = main()
+    global gpu_q
+    gpu_q = []
+    data = fetch_urls()
     return data
 
-def load_more():
-    global req
-    data = fetch_urls()
-    new_data = data[req*20:(req+1)*20]
-    req += 1
-    return new_data
-    
+
+def query_search(query):
+    data = fetch_google(10, query)
+    return data
+
+
+fetch_google(5)
