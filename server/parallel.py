@@ -10,24 +10,10 @@ import concurrent.futures
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from requests_futures.sessions import FuturesSession
 from newspaper import Article
-
-
 import torch
-from transformers import pipeline
-from transformers import BartTokenizer, BartForConditionalGeneration
 
 gc.collect()
 torch.cuda.empty_cache()
-device = 0 if torch.cuda.is_available() else -1
-model = BartForConditionalGeneration.from_pretrained("Yale-LILY/brio-cnndm-cased")
-tokenizer = BartTokenizer.from_pretrained("Yale-LILY/brio-cnndm-cased")
-summarizer = pipeline(
-    "summarization",
-    model=model,
-    tokenizer=tokenizer,
-    truncation=True,
-    device=device,
-)
 
 current_query = None
 current_page = [0, 1, 1, 1, 1]

@@ -1,8 +1,8 @@
 from flask import Flask, jsonify
-from scraper import scrape
 from flask_cors import CORS, cross_origin
 from flask_socketio import SocketIO, emit
 import parallel
+import model
 from grammar import fix_text
 import time
 
@@ -27,7 +27,7 @@ def load_more_api():
 
 @socketio.on("summarize_content")
 def handle_summarize_content(data):
-    summarized_content = parallel.summarizer(
+    summarized_content = model.summarizer(
         data["content"], min_length=200, max_length=256, do_sample=False
     )[0]["summary_text"]
     summarized_content = summarized_content[0].upper() + summarized_content[1:]

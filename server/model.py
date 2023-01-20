@@ -1,8 +1,18 @@
 import torch
+from transformers import BartTokenizer, BartForConditionalGeneration
 from transformers import pipeline
-import gc
 
-summarizer = pipeline("summarization", model="t5-small", tokenizer="t5-small", device=0)
-
-gc.collect()
-torch.cuda.empty_cache()
+"""
+We have used BRIO(Bringing Order to Abstractive Summarization) for performing our summarization.
+It performs abstractive summarization while preserving case-sensitivity unlike other ConditionalGeneration Models like t5
+"""
+device = 0 if torch.cuda.is_available() else -1
+model = BartForConditionalGeneration.from_pretrained("Yale-LILY/brio-cnndm-cased")
+tokenizer = BartTokenizer.from_pretrained("Yale-LILY/brio-cnndm-cased")
+summarizer = pipeline(
+    "summarization",
+    model=model,
+    tokenizer=tokenizer,
+    truncation=True,
+    device=device,
+)
