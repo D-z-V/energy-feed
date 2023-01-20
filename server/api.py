@@ -28,7 +28,7 @@ def load_more_api():
 @socketio.on("summarize_content")
 def handle_summarize_content(data):
     summarized_content = parallel.summarizer(
-        data["content"], min_length=256, do_sample=False
+        data["content"], min_length=200, max_length=256, do_sample=False
     )[0]["summary_text"]
     summarized_content = summarized_content[0].upper() + summarized_content[1:]
     summarized_content = fix_text(summarized_content)
