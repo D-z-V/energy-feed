@@ -10,4 +10,8 @@ def fix_text(text):
     text = re.sub(r"(?<=[^\w\.])(?<!\.)\s", lambda m: m.group() + ".", text)
     # Remove the space before a period
     text = re.sub(r"\s+\.", ".", text)
+    # Replace ,. with ,
+    text = text.replace(",.", ",")
+    # Replace .. with .
+    text = text.replace("..", ".")
     return text
