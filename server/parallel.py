@@ -221,7 +221,7 @@ def fetch_google(n_articles=3, query=None):
                         "title": title,
                         "date": date,
                         "content": text,
-                        "source": source,
+                        "source": source + " via (Google News)",
                         "image": image,
                         "id": str(uuid.uuid1()),
                         "url": url,

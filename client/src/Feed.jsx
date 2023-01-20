@@ -133,6 +133,7 @@ function TwitterFeed() {
   const [pageTheme, setPageTheme] = useState("light");
   const [isChecked, setIsChecked] = useState(false);
 
+  const [summary, setSummary] = useState({});
   const [isSummarized, setIsSummarized] = useState({});
   const [originalContent, setOriginalContent] = useState({});
 
@@ -168,9 +169,20 @@ function TwitterFeed() {
     setTweets(updatedTweets);
   };
 
+  const handleShowSummary = (id) => {
+    setIsSummarized({ ...isSummarized, [id]: true });
+    setModalContent(summary[id]);
+    const updatedTweets = tweets.map((tweet) => {
+      if (tweet.id === id) {
+        return { ...tweet, content: summary[id] };
+      }
+      return tweet;
+    });
+    setTweets(updatedTweets);
+  };
+
   useEffect(() => {
     socket.on("content_updated", (data) => {
-      console.log(data);
       setCardLoading(null);
       setModalLoading(false);
       const updatedTweets = tweets.map((tweet) => {
@@ -179,10 +191,11 @@ function TwitterFeed() {
         }
         return tweet;
       });
+      setSummary({ ...summary, [data.id]: data.content });
       setTweets(updatedTweets);
       setModalContent(data.content);
     });
-  }, [tweets]);
+  }, [tweets, summary]);
 
   const querySearch = (query) => {
     socket.emit("query_search", query);
@@ -192,7 +205,6 @@ function TwitterFeed() {
   useEffect(() => {
     socket.on("query_results", (data) => {
       setQueryLoading(false);
-      console.log(data.results);
       setTweets([...tweets, ...data.results]);
     });
   }, [tweets]);
@@ -280,7 +292,6 @@ function TwitterFeed() {
       <ThemeProvider theme={theme}>
         <CssBaseline />
         <Grid container spacing={5} p={5} mt={3}>
-          {console.log(tweets)}
           {tweets
             .filter(
               (tweet) =>
@@ -312,25 +323,26 @@ function TwitterFeed() {
                           <Button
                             variant="contained"
                             endIcon={<SummarizeIcon />}
-                            onClick={() =>
-                              handleShowOriginal(tweet.id, tweet.content)
-                            }
+                            onClick={() => handleShowOriginal(tweet.id)}
                             style={{
                               marginLeft: "100px",
                               display:
                                 cardLoading === tweet.id ? "none" : "flex",
                             }}
-                            color="success"
-                            >
+                            color="success">
                             Show Original
                           </Button>
                         ) : (
                           <Button
                             variant="contained"
                             endIcon={<SummarizeIcon />}
-                            onClick={() =>
-                              summarizeContent(tweet.id, tweet.content)
-                            }
+                            onClick={() => {
+                              if (summary[tweet.id]) {
+                                handleShowSummary(tweet.id);
+                              } else {
+                                summarizeContent(tweet.id, tweet.content);
+                              }
+                            }}
                             style={{
                               marginLeft: "100px",
                               display:
@@ -539,19 +551,23 @@ function TwitterFeed() {
                   style={{
                     display: cardLoading === modalId ? "none" : "flex",
                   }}
-                  color="success"
-                  >
+                  color="success">
                   Show Original
                 </Button>
               ) : (
                 <Button
                   variant="contained"
                   endIcon={<SummarizeIcon />}
-                  onClick={() => summarizeContent(modalId, modalContent)}
+                  onClick={() => {
+                    if (summary[modalId]) {
+                      handleShowSummary(modalId);
+                    } else {
+                      summarizeContent(modalId, modalContent);
+                    }
+                  }}
                   style={{
                     display: cardLoading === modalId ? "none" : "flex",
-                  }}
-                  >
+                  }}>
                   Summarize
                 </Button>
               )}
@@ -562,11 +578,11 @@ function TwitterFeed() {
                 {modalLoading ? (
                   <Box
                     width={"100%"}
-                    my={6}
+                    py={6}
                     display={"flex"}
                     justifyContent={"center"}
                     alignItems={"center"}
-                    sx={{ px: { md: 50 } }}>
+                    sx={{ px: { md: 45 } }}>
                     <CircularProgress size="5rem" />
                   </Box>
                 ) : (
