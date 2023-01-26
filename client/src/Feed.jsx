@@ -1,25 +1,40 @@
 import React, { useState, useEffect } from "react";
-import { Card, CardContent, Typography, Link, Grid, Box } from "@mui/material";
-import CircularProgress from "@mui/material/CircularProgress";
-import Button from "@mui/material/Button";
+import {
+  Card,
+  CardContent,
+  Typography,
+  Link,
+  Grid,
+  Box,
+  Dialog,
+  DialogActions,
+  DialogTitle,
+  DialogContent,
+  DialogContentText,
+  Button,
+  AppBar,
+  Toolbar,
+  Switch,
+  InputBase,
+  FormGroup,
+  FormControlLabel,
+  CssBaseline,
+  CircularProgress,
+} from "@mui/material";
+import {
+  ThemeProvider,
+  createTheme,
+  styled,
+  alpha,
+} from "@mui/material/styles";
+
 import io from "socket.io-client";
+
 import SummarizeIcon from "@mui/icons-material/Summarize";
-import Dialog from "@mui/material/Dialog";
-import DialogActions from "@mui/material/DialogActions";
-import DialogContent from "@mui/material/DialogContent";
-import DialogContentText from "@mui/material/DialogContentText";
-import DialogTitle from "@mui/material/DialogTitle";
-import AppBar from "@mui/material/AppBar";
-import Toolbar from "@mui/material/Toolbar";
 import SearchIcon from "@mui/icons-material/Search";
-import { styled, alpha } from "@mui/material/styles";
-import InputBase from "@mui/material/InputBase";
-import Switch from "@mui/material/Switch";
-import FormGroup from "@mui/material/FormGroup";
-import FormControlLabel from "@mui/material/FormControlLabel";
-import { ThemeProvider, createTheme } from "@mui/material/styles";
-import CssBaseline from "@mui/material/CssBaseline";
 import AutorenewIcon from "@mui/icons-material/Autorenew";
+
+import Fuse from "fuse.js";
 
 const MaterialUISwitch = styled(Switch)(({ theme }) => ({
   width: 62,
@@ -137,6 +152,17 @@ function TwitterFeed() {
   const [isSummarized, setIsSummarized] = useState({});
   const [originalContent, setOriginalContent] = useState({});
 
+  const options = {
+    shouldSort: true,
+    threshold: 0.5,
+    location: 0,
+    distance: 100,
+    minMatchCharLength: 1,
+    keys: ["content", "title"],
+  };
+
+  const fuse = new Fuse(tweets, options);
+
   var theme = createTheme({
     palette: {
       mode: pageTheme,
@@ -205,6 +231,7 @@ function TwitterFeed() {
   useEffect(() => {
     socket.on("query_results", (data) => {
       setQueryLoading(false);
+      console.log(data);
       setTweets([...tweets, ...data.results]);
     });
   }, [tweets]);
@@ -295,14 +322,10 @@ function TwitterFeed() {
           {tweets
             .filter(
               (tweet) =>
-                searchValue === "" ||
-                tweet.content
-                  .toLowerCase()
-                  .includes(searchValue.toLowerCase()) ||
-                tweet.source
-                  .toLowerCase()
-                  .includes(searchValue.toLowerCase()) ||
-                tweet.title.toLowerCase().includes(searchValue.toLowerCase())
+                fuse
+                  .search(searchValue)
+                  .map((tweet) => tweet.item.id)
+                  .includes(tweet.id) || searchValue === ""
             )
             .map((tweet, index) => (
               <Grid item xs={12} sm={6} md={4} key={tweet.id}>
@@ -400,13 +423,10 @@ function TwitterFeed() {
           {searchValue !== "" ? (
             tweets.filter(
               (tweet) =>
-                tweet.content
-                  .toLowerCase()
-                  .includes(searchValue.toLowerCase()) ||
-                tweet.source
-                  .toLowerCase()
-                  .includes(searchValue.toLowerCase()) ||
-                tweet.title.toLowerCase().includes(searchValue.toLowerCase())
+                fuse
+                  .search(searchValue)
+                  .map((tweet) => tweet.item.id)
+                  .includes(tweet.id) || searchValue === ""
             ).length > 0 ? (
               <Box
                 display="flex"
@@ -530,11 +550,13 @@ function TwitterFeed() {
             onClose={() => setModalOpen(false)}
             maxWidth="md">
             <DialogTitle>{modalTitle}</DialogTitle>
-            <DialogContent>
-              <Typography variant="body2" color="textSecondary" mb={1}>
+
+              <Typography variant="body2" color="textSecondary">
+                <DialogContent sx={{ pt: 0, pb: 1 }}>
                 {formatDate(modalDate)}
+                </DialogContent>
               </Typography>
-            </DialogContent>
+
             <Box display="flex" justifyContent="center" my={1}>
               <img
                 src={modalImage}
